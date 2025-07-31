@@ -15,12 +15,12 @@ impl<T> RingOps for T where T: Add + Sub + Mul + One + Zero + AddAssign {}
 
 trait RingElement: Sized + RingOps {}
 
-struct PolynomialRing<R, V> {
+struct PolynomialRing<'a, R, V> {
     vars: Vec<V>,
-    phantom: PhantomData<R>,
+    base: &'a R,
 }
 
-impl<R, V> PolynomialRing<R, V>
+impl<R, V> PolynomialRing<'_, R, V>
 where
     V: Display,
 {
@@ -57,7 +57,7 @@ struct Polynomial<'a, R, V, K, P>
 where
     P: Hash,
 {
-    elem_of: &'a PolynomialRing<R, V>,
+    elem_of: &'a PolynomialRing<'a, R, V>,
     terms: HashMap<Monomial<P>, K>,
 }
 
@@ -193,7 +193,7 @@ struct Monomial<P> {
     powers: Vec<P>,
 }
 
-impl<R, V, K, P> Ring<Polynomial<'_, R, V, K, P>> for PolynomialRing<R, V>
+impl<R, V, K, P> Ring<Polynomial<'_, R, V, K, P>> for PolynomialRing<'_, R, V>
 where
     R: Ring<K>,
     K: RingElement + Clone,
@@ -254,7 +254,7 @@ fn main() {
             .into_iter()
             .map(|s| String::from(s))
             .collect(),
-        phantom: PhantomData::<AlreadyRing<BigRational>>,
+        base: &AlreadyRing { phantom: PhantomData::<BigRational> },
     };
     let f = Polynomial {
         elem_of: &my_ring,
@@ -310,7 +310,7 @@ fn main() {
 
     let your_ring = PolynomialRing {
         vars: vec!["a", "b"],
-        phantom: PhantomData::<AlreadyRing<BigRational>>,
+        base: &AlreadyRing { phantom: PhantomData::<BigRational> },
     };
     let foo = Polynomial {
         elem_of: &your_ring,
