@@ -1,253 +1,277 @@
-#![feature(adt_const_params)]
-#![feature(iter_chain)]
+#![feature(iter_intersperse)]
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
+use std::collections::hash_map::Entry;
 use std::fmt::Display;
 use std::hash::Hash;
-use std::iter::{chain, zip};
-use std::marker::ConstParamTy;
-use std::ops::{Add, AddAssign, Div, Mul, Sub};
+use std::marker::PhantomData;
+use std::ops::{Add, AddAssign, Mul, Sub};
 
-use num::{One, Zero};
-use thiserror::Error;
+use num::{BigRational, One, PrimInt, Unsigned, Zero};
 
-trait Field: Add + Sub + Mul + Div + Display + One + Zero + PartialEq + Clone + AddAssign {}
-impl<T: Add + Sub + Mul + Div + Display + One + Zero + PartialEq + Clone + AddAssign> Field for T {}
+trait Ring<T: RingElement> {}
 
-trait Power:
-    Add + Display + One + Zero + PartialEq + PartialOrd + Eq + Hash + Clone + AddAssign
-{
-}
-impl<T: Add + Display + One + Zero + PartialEq + PartialOrd + Eq + Hash + Clone + AddAssign> Power
-    for T
-{
+trait RingOps: Add + Sub + Mul + One + Zero + AddAssign {}
+impl<T> RingOps for T where T: Add + Sub + Mul + One + Zero + AddAssign {}
+
+trait RingElement: Sized + RingOps {}
+
+struct PolynomialRing<R, V> {
+    vars: Vec<V>,
+    phantom: PhantomData<R>,
 }
 
-#[derive(ConstParamTy, PartialEq, Eq)]
-enum IsPolynomialReduced {
-    Reduced,
-    NotReduced,
-}
-
-#[derive(Debug)]
-struct Polynomial<const NUM_VARS: usize, K, P, const IS_RED: IsPolynomialReduced>
+impl<R, V> PolynomialRing<R, V>
 where
-    K: Field,
-    P: Power,
+    V: Display,
 {
-    terms: Vec<Term<NUM_VARS, K, P>>,
-}
-
-impl<const NUM_VARS: usize, K, P, const IS_RED: IsPolynomialReduced> Display
-    for Polynomial<NUM_VARS, K, P, IS_RED>
-where
-    K: Field,
-    P: Power,
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for (i, term) in self.terms.iter().enumerate() {
-            if i > 0 {
-                f.write_str("+")?;
-            }
-            write!(f, "{term}")?;
-        }
-        Ok(())
-    }
-}
-
-#[derive(Error, Debug)]
-#[error("polynomial was not reduced")]
-struct PolynomialReducedErr<const NUM_VARS: usize, K, P, const IS_RED: IsPolynomialReduced>
-where
-    K: Field,
-    P: Power,
-{
-    poly: Polynomial<NUM_VARS, K, P, IS_RED>,
-}
-
-impl<const NUM_VARS: usize, K, P> Polynomial<NUM_VARS, K, P, { IsPolynomialReduced::NotReduced }>
-where
-    K: Field,
-    P: Power,
-{
-    fn try_as_reduced(
-        self,
-    ) -> Result<
-        Polynomial<NUM_VARS, K, P, { IsPolynomialReduced::Reduced }>,
-        PolynomialReducedErr<NUM_VARS, K, P, { IsPolynomialReduced::NotReduced }>,
-    > {
-        let mut set = HashSet::with_capacity(self.terms.len());
-        let is_reduced = self
-            .terms
-            .iter()
-            .all(|t| set.insert(t.mono.clone()) & !t.coeff.is_zero());
-        if is_reduced {
-            Ok(Polynomial { terms: self.terms })
+    fn fmt_monomial<P: Display + Zero + One + Eq>(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+        m: &Monomial<P>,
+    ) -> std::fmt::Result {
+        if m.powers.iter().all(|p| p.is_zero()) {
+            write!(f, "1")?;
         } else {
-            Err(PolynomialReducedErr { poly: self })
-        }
-    }
-
-    fn reduce(self) -> Polynomial<NUM_VARS, K, P, { IsPolynomialReduced::Reduced }> {
-        // TODO: Hack
-        self + Self { terms: Vec::new() }
-    }
-}
-
-impl<const NUM_VARS: usize, K, P, const IS_RED: IsPolynomialReduced>
-    Add<Polynomial<NUM_VARS, K, P, { IsPolynomialReduced::NotReduced }>>
-    for Polynomial<NUM_VARS, K, P, IS_RED>
-where
-    K: Field,
-    P: Power,
-{
-    type Output = Polynomial<NUM_VARS, K, P, { IsPolynomialReduced::Reduced }>;
-
-    fn add(
-        self,
-        rhs: Polynomial<NUM_VARS, K, P, { IsPolynomialReduced::NotReduced }>,
-    ) -> Self::Output {
-        let mut map = HashMap::new();
-        for term in chain(self.terms, rhs.terms) {
-            let entry = map.entry(term.mono).or_insert(K::zero());
-            *entry += term.coeff;
-        }
-        Polynomial {
-            terms: map
-                .into_iter()
-                .filter(|(_mono, coeff)| !coeff.is_zero())
-                .map(|(mono, coeff)| Term { mono, coeff })
-                .collect(),
-        }
-    }
-}
-
-impl<const NUM_VARS: usize, K, P, const IS_RED: IsPolynomialReduced>
-    Add<Polynomial<NUM_VARS, K, P, { IsPolynomialReduced::Reduced }>>
-    for Polynomial<NUM_VARS, K, P, IS_RED>
-where
-    K: Field,
-    P: Power,
-{
-    type Output = Polynomial<NUM_VARS, K, P, { IsPolynomialReduced::Reduced }>;
-
-    fn add(
-        self,
-        rhs: Polynomial<NUM_VARS, K, P, { IsPolynomialReduced::Reduced }>,
-    ) -> Self::Output {
-        let mut map = HashMap::new();
-        for term in chain(self.terms, rhs.terms) {
-            let entry = map.entry(term.mono).or_insert(K::zero());
-            *entry += term.coeff;
-        }
-        Polynomial {
-            terms: map
-                .into_iter()
-                .filter(|(_mono, coeff)| !coeff.is_zero())
-                .map(|(mono, coeff)| Term { mono, coeff })
-                .collect(),
-        }
-    }
-}
-
-#[derive(Debug)]
-struct Term<const NUM_VARS: usize, K, P>
-where
-    K: Field,
-    P: Power,
-{
-    coeff: K,
-    mono: Monomial<NUM_VARS, P>,
-}
-
-impl<const NUM_VARS: usize, K, P> Display for Term<NUM_VARS, K, P>
-where
-    K: Field,
-    P: Power,
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if !self.coeff.is_one() {
-            write!(f, "{}*", self.coeff)?;
-        }
-        write!(f, "{}", self.mono)
-    }
-}
-
-#[derive(PartialEq, Eq, Hash, Copy, Clone, Debug)]
-struct Monomial<const NUM_VARS: usize, P>
-where
-    P: Power,
-{
-    index: [P; NUM_VARS],
-}
-
-impl<const NUM_VARS: usize, P> Display for Monomial<NUM_VARS, P>
-where
-    P: Power,
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for (i, power) in self.index.iter().filter(|a| !a.is_zero()).enumerate() {
-            if i > 0 {
-                f.write_str("*")?;
-            }
-            if power.is_zero() {
-                continue;
-            }
-            write!(f, "x_{}", i + 1)?;
-            if !power.is_one() {
-                write!(f, "^{power}")?;
+            for (i, (var_idx, p)) in m
+                .powers
+                .iter()
+                .enumerate()
+                .filter(|(_j, p)| !p.is_zero())
+                .enumerate()
+            {
+                if i > 0 {
+                    write!(f, "*")?;
+                }
+                write!(f, "{}", self.vars[var_idx])?;
+                if !p.is_one() {
+                    write!(f, "^{p}")?;
+                }
             }
         }
         Ok(())
     }
 }
 
-impl<const NUM_VARS: usize, P> Monomial<NUM_VARS, P>
+struct Polynomial<'a, R, V, K, P>
 where
-    P: Power,
+    P: Hash,
 {
-    fn divides(&self, other: &Monomial<NUM_VARS, P>) -> bool {
-        zip(&self.index, &other.index).all(|(a, b)| a <= b)
+    elem_of: &'a PolynomialRing<R, V>,
+    terms: HashMap<Monomial<P>, K>,
+}
+
+impl<R, V, K, P> Add for Polynomial<'_, R, V, K, P>
+where
+    R: Ring<K>,
+    K: RingElement + Clone,
+    P: Hash + PrimInt + Unsigned + Clone,
+    V: Eq,
+{
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        let mut terms = self.terms.clone();
+        for (m, c2) in rhs.terms.into_iter() {
+            match terms.entry(m) {
+                Entry::Occupied(mut entry) => {
+                    *entry.get_mut() += c2;
+                    if entry.get().is_zero() {
+                        entry.remove();
+                    }
+                }
+                Entry::Vacant(entry) => {
+                    entry.insert_entry(c2);
+                }
+            }
+        }
+        Self {
+            elem_of: self.elem_of,
+            terms,
+        }
+    }
+}
+impl<R, V, K, P> Sub for Polynomial<'_, R, V, K, P>
+where
+    R: Ring<K>,
+    K: RingElement + Clone,
+    P: Hash + PrimInt + Unsigned + Clone,
+    V: Eq,
+{
+    type Output = Self;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        todo!()
+    }
+}
+impl<R, V, K, P> Mul for Polynomial<'_, R, V, K, P>
+where
+    R: Ring<K>,
+    K: RingElement + Clone,
+    P: Hash + PrimInt + Unsigned + Clone,
+    V: Eq,
+{
+    type Output = Self;
+
+    fn mul(self, rhs: Self) -> Self::Output {
+        todo!()
+    }
+}
+impl<R, V, K, P> One for Polynomial<'_, R, V, K, P>
+where
+    R: Ring<K>,
+    K: RingElement + Clone,
+    P: Hash + PrimInt + Unsigned + Clone,
+    V: Eq,
+{
+    fn one() -> Self {
+        todo!()
+    }
+    fn is_one(&self) -> bool
+    where
+        Self: PartialEq,
+    {
+        *self == Self::one()
+    }
+}
+impl<R, V, K, P> Zero for Polynomial<'_, R, V, K, P>
+where
+    R: Ring<K>,
+    K: RingElement + Clone,
+    P: Hash + PrimInt + Unsigned + Clone,
+    V: Eq,
+{
+    fn zero() -> Self {
+        todo!()
+    }
+
+    fn is_zero(&self) -> bool {
+        todo!()
+    }
+}
+impl<R, V, K, P> AddAssign for Polynomial<'_, R, V, K, P>
+where
+    R: Ring<K>,
+    K: RingElement + Clone,
+    P: Hash + PrimInt + Unsigned + Clone,
+    V: Eq,
+{
+    fn add_assign(&mut self, rhs: Self) {
+        todo!()
     }
 }
 
-#[derive(ConstParamTy, PartialEq, Eq)]
-enum IsMonomialIdealMinimallyGenerated {
-    Minimal,
-    NotMinimal,
+#[derive(Clone, PartialEq, Eq, Hash)]
+struct Monomial<P> {
+    powers: Vec<P>,
 }
 
-struct MonomialIdeal<const NUM_VARS: usize, K, P, const IS_MIN: IsMonomialIdealMinimallyGenerated>
+impl<R, V, K, P> Ring<Polynomial<'_, R, V, K, P>> for PolynomialRing<R, V>
 where
-    K: Field,
-    P: Power,
+    R: Ring<K>,
+    K: RingElement + Clone,
+    P: Hash + PrimInt + Unsigned, // TODO: Correct trait (see also impl RingElement for Polynomial)
+    V: Eq,
 {
-    gens: Vec<Term<NUM_VARS, K, P>>,
 }
+
+impl<R, V, K, P> RingElement for Polynomial<'_, R, V, K, P>
+where
+    R: Ring<K>,
+    K: RingElement + Clone,
+    P: Hash + PrimInt + Unsigned,
+    V: Eq,
+{
+}
+
+impl<R, V, K, P> Display for Polynomial<'_, R, V, K, P>
+where
+    K: Display + One + Eq,
+    P: Hash + Display + One + Zero + Eq,
+    V: Display,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.terms.is_empty() {
+            write!(f, "0")?;
+        } else {
+            for (i, (m, c)) in self.terms.iter().enumerate() {
+                // TODO: Handle parenthesization of coefficients;
+                // probably decided trait DisplayAsCoefficient
+                if !c.is_one() {
+                    if i > 0 {
+                        write!(f, "{c:+}")?;
+                    } else {
+                        write!(f, "{c}")?;
+                    }
+                    write!(f, "*")?;
+                } else if i > 0 {
+                    write!(f, "+")?;
+                }
+                self.elem_of.fmt_monomial(f, m)?;
+            }
+        }
+        Ok(())
+    }
+}
+
+struct AlreadyRing {}
+impl<T> Ring<T> for AlreadyRing where T: RingOps + Clone {}
+impl<T> RingElement for T where T: RingOps + Clone {}
 
 fn main() {
-    let f: Polynomial<_, f64, u32, { IsPolynomialReduced::NotReduced }> = Polynomial {
-        terms: vec![
-            Term {
-                coeff: 2.0,
-                mono: Monomial { index: [1, 2] },
-            },
-            Term {
-                coeff: 1.0,
-                mono: Monomial { index: [1, 2] },
-            },
-        ],
+    let my_ring = PolynomialRing {
+        vars: vec!["x", "y", "z"]
+            .into_iter()
+            .map(|s| String::from(s))
+            .collect(),
+        phantom: PhantomData::<AlreadyRing>,
     };
-    let f = f.try_as_reduced().unwrap_or_else(|PolynomialReducedErr { poly }| poly.reduce());
-    let g: Polynomial<_, f64, u32, { IsPolynomialReduced::NotReduced }> = Polynomial {
-        terms: vec![
-            Term {
-                coeff: 3.0,
-                mono: Monomial { index: [4, 0] },
-            },
-        ],
+    let f = Polynomial {
+        elem_of: &my_ring,
+        terms: HashMap::<Monomial<u32>, BigRational>::from([
+            (
+                Monomial {
+                    powers: vec![1, 0, 0],
+                },
+                BigRational::from_float(1.0).unwrap(),
+            ),
+            (
+                Monomial {
+                    powers: vec![1, 1, 0],
+                },
+                BigRational::from_float(2.0).unwrap(),
+            ),
+            (
+                Monomial {
+                    powers: vec![0, 1, 1],
+                },
+                BigRational::from_float(3.0).unwrap(),
+            ),
+        ]),
     };
-    let g = g.try_as_reduced().unwrap_or_else(|PolynomialReducedErr { poly }| poly.reduce());
+    let g = Polynomial {
+        elem_of: &my_ring,
+        terms: HashMap::<Monomial<u32>, BigRational>::from([
+            (
+                Monomial {
+                    powers: vec![1, 0, 0],
+                },
+                BigRational::from_float(-1.0).unwrap(),
+            ),
+            (
+                Monomial {
+                    powers: vec![1, 1, 0],
+                },
+                BigRational::from_float(-3.0).unwrap(),
+            ),
+            (
+                Monomial {
+                    powers: vec![1, 1, 1],
+                },
+                BigRational::from_float(2.0).unwrap(),
+            ),
+        ]),
+    };
     println!("f = {f}");
     println!("g = {g}");
     println!("f + g = {}", f + g);
