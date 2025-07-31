@@ -292,6 +292,9 @@ where
     }
 }
 
+/// A dummy type with value representing the ring whose elements are of type
+/// `T`, used to encode the fact that a base or external numerical type should
+/// be treated as a type fo ring elements.
 #[derive(Clone)]
 struct AlreadyRing<T> {
     phantom: PhantomData<T>,
