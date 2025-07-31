@@ -4,10 +4,11 @@ use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::fmt::Display;
 use std::hash::Hash;
+use std::iter::zip;
 use std::marker::PhantomData;
 use std::ops::{Add, AddAssign, Mul, Sub};
 
-use num::{BigRational, One, PrimInt, Unsigned, Zero};
+use num::{BigRational, Num, One, PrimInt, Unsigned, Zero};
 
 trait Ring<T: RingElement> {}
 
@@ -53,6 +54,7 @@ where
     }
 }
 
+#[derive(Clone)]
 struct Polynomial<'a, R, V, K, P>
 where
     P: Hash,
@@ -91,6 +93,7 @@ where
         }
     }
 }
+
 impl<R, V, K, P> Sub for Polynomial<'_, R, V, K, P>
 where
     R: Ring<K>,
@@ -104,6 +107,7 @@ where
         todo!()
     }
 }
+
 impl<R, V, K, P> Mul for Polynomial<'_, R, V, K, P>
 where
     R: Ring<K>,
@@ -114,9 +118,34 @@ where
     type Output = Self;
 
     fn mul(self, rhs: Self) -> Self::Output {
-        todo!()
+        let mut terms = HashMap::<Monomial<P>, K>::new();
+        for (m1, c1) in self.terms.iter() {
+            for (m2, c2) in rhs.terms.iter() {
+                let prod_monomial = zip(m1.powers.iter(), m2.powers.iter())
+                    .map(|(m1, m2)| *m1 + *m2)
+                    .collect();
+                match terms.entry(Monomial {
+                    powers: prod_monomial,
+                }) {
+                    Entry::Occupied(mut entry) => {
+                        *entry.get_mut() += c1.clone() * c2.clone();
+                        if entry.get().is_zero() {
+                            entry.remove();
+                        }
+                    }
+                    Entry::Vacant(entry) => {
+                        entry.insert(c1.clone() * c2.clone());
+                    }
+                }
+            }
+        }
+        Self {
+            elem_of: self.elem_of,
+            terms,
+        }
     }
 }
+
 impl<R, V, K, P> One for Polynomial<'_, R, V, K, P>
 where
     R: Ring<K>,
@@ -214,9 +243,12 @@ where
     }
 }
 
-struct AlreadyRing {}
-impl<T> Ring<T> for AlreadyRing where T: RingOps + Clone {}
-impl<T> RingElement for T where T: RingOps + Clone {}
+#[derive(Clone)]
+struct AlreadyRing<T> {
+    phantom: PhantomData<T>,
+}
+impl<T> Ring<T> for AlreadyRing<T> where T: Num + RingOps {}
+impl<T> RingElement for T where T: Num + RingOps {}
 
 fn main() {
     let my_ring = PolynomialRing {
@@ -224,7 +256,7 @@ fn main() {
             .into_iter()
             .map(|s| String::from(s))
             .collect(),
-        phantom: PhantomData::<AlreadyRing>,
+        phantom: PhantomData::<AlreadyRing<BigRational>>,
     };
     let f = Polynomial {
         elem_of: &my_ring,
@@ -272,7 +304,31 @@ fn main() {
             ),
         ]),
     };
-    println!("f = {f}");
-    println!("g = {g}");
+    println!("f     = {f}");
+    println!("g     = {g}");
     println!("f + g = {}", f + g);
+
+    println!();
+
+    let your_ring = PolynomialRing {
+        vars: vec!["a", "b"],
+        phantom: PhantomData::<AlreadyRing<BigRational>>,
+    };
+    let foo = Polynomial {
+        elem_of: &your_ring,
+        terms: HashMap::<Monomial<u32>, BigRational>::from([
+            (
+                Monomial { powers: vec![1, 0] },
+                BigRational::from_float(1.0).unwrap(),
+            ),
+            (
+                Monomial { powers: vec![0, 1] },
+                BigRational::from_float(1.0).unwrap(),
+            ),
+        ]),
+    };
+    let bar = foo.clone();
+    println!("foo   = {foo}");
+    println!("bar   = foo");
+    println!("foo^2 = {}", foo * bar);
 }
