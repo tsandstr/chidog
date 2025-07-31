@@ -8,13 +8,32 @@ use std::ops::{Add, AddAssign, Mul, MulAssign, Sub, SubAssign};
 
 use num::{BigRational, Num, One, PrimInt, Unsigned, Zero};
 
+/// A trait for types whose values are rings.
+///
+/// If the type `A` implements `Ring<B>`, then a value `a: A` denotes an
+/// instance of a ring, whose ring elements are valued in `B`. Therefore, a ring
+/// operation in `a` might look like `b1 + b2 * b3`.
 trait Ring<T: RingElement> {}
 
+/// The ring operations +, -, and *, in-place versions, and additive and
+/// multiplicative units
 trait RingOps: Add + Sub + Mul + One + Zero + AddAssign + SubAssign + MulAssign {}
 impl<T> RingOps for T where T: Add + Sub + Mul + One + Zero + AddAssign + SubAssign + MulAssign {}
 
+/// A type whose values are elements of a ring.
 trait RingElement: Sized + RingOps {}
 
+/// A variable `my_ring: PolynomialRing<R, V>` represents a polynomial ring over
+/// a base ring `R`. The elements of this polynomial ring will by
+/// `Polynomial<'_, R, V, K, P>`. The variable `my_ring` owns its variable names
+/// of type `V`, and maintains a reference to its base ring `r: R`.
+///
+/// Such a `my_ring: PolynomialRing<R, V>` also implements `Ring<Polynomial<'_,
+/// R, V, K, P>>`, meaning it has ring elements of the form `f: Polynomial<'_,
+/// R, V, K, P>`. Such `f` represents a polynomial belonging to `my_ring`. The
+/// coefficients of the polynomial are valued in `K`, where the base ring `R`
+/// implements `Ring<K>` (that is, values `k: K` are elements belonging to the
+/// base ring `r: R`)
 struct PolynomialRing<'a, R, V> {
     vars: Vec<V>,
     base: &'a R,
@@ -52,6 +71,12 @@ where
     }
 }
 
+/// Polynomials are implemented as a hash map associating to each monomial a
+/// coefficient. We maintain a guarantee that the hash map contains only nonzero
+/// coefficients; any operation which would result in a zero coefficient simply
+/// deletes the corresponding entry from the map.
+///
+/// TODO: Hide behind an API that enforces this guarantee.
 #[derive(Clone)]
 struct Polynomial<'a, R, V, K, P>
 where
