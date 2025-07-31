@@ -24,7 +24,7 @@ impl<T> RingOps for T where T: Add + Sub + Mul + One + Zero + AddAssign + SubAss
 trait RingElement: Sized + RingOps {}
 
 /// A variable `my_ring: PolynomialRing<R, V>` represents a polynomial ring over
-/// a base ring `R`. The elements of this polynomial ring will by
+/// a base ring `R`. The elements of this polynomial ring will be of type
 /// `Polynomial<'_, R, V, K, P>`. The variable `my_ring` owns its variable names
 /// of type `V`, and maintains a reference to its base ring `r: R`.
 ///
