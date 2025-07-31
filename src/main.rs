@@ -4,14 +4,14 @@ use std::fmt::Display;
 use std::hash::Hash;
 use std::iter::zip;
 use std::marker::PhantomData;
-use std::ops::{Add, AddAssign, Mul, Sub};
+use std::ops::{Add, AddAssign, Mul, MulAssign, Sub, SubAssign};
 
 use num::{BigRational, Num, One, PrimInt, Unsigned, Zero};
 
 trait Ring<T: RingElement> {}
 
-trait RingOps: Add + Sub + Mul + One + Zero + AddAssign {}
-impl<T> RingOps for T where T: Add + Sub + Mul + One + Zero + AddAssign {}
+trait RingOps: Add + Sub + Mul + One + Zero + AddAssign + SubAssign + MulAssign {}
+impl<T> RingOps for T where T: Add + Sub + Mul + One + Zero + AddAssign + SubAssign + MulAssign {}
 
 trait RingElement: Sized + RingOps {}
 
@@ -161,6 +161,7 @@ where
         *self == Self::one()
     }
 }
+
 impl<R, V, K, P> Zero for Polynomial<'_, R, V, K, P>
 where
     R: Ring<K>,
@@ -176,6 +177,7 @@ where
         todo!()
     }
 }
+
 impl<R, V, K, P> AddAssign for Polynomial<'_, R, V, K, P>
 where
     R: Ring<K>,
@@ -184,6 +186,30 @@ where
     V: Eq,
 {
     fn add_assign(&mut self, rhs: Self) {
+        todo!()
+    }
+}
+
+impl<R, V, K, P> SubAssign for Polynomial<'_, R, V, K, P>
+where
+    R: Ring<K>,
+    K: RingElement + Clone,
+    P: Hash + PrimInt + Unsigned + Clone,
+    V: Eq,
+{
+    fn sub_assign(&mut self, rhs: Self) {
+        todo!()
+    }
+}
+
+impl<R, V, K, P> MulAssign for Polynomial<'_, R, V, K, P>
+where
+    R: Ring<K>,
+    K: RingElement + Clone,
+    P: Hash + PrimInt + Unsigned + Clone,
+    V: Eq,
+{
+    fn mul_assign(&mut self, rhs: Self) {
         todo!()
     }
 }
